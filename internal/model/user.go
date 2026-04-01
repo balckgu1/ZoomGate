@@ -2,14 +2,19 @@ package model
 
 import "time"
 
+// Role represents the authorization level of a user.
 type Role string
 
 const (
-	RoleAdmin  Role = "admin"
-	RoleUser   Role = "user"
+	// RoleAdmin has full access to all features including management.
+	RoleAdmin Role = "admin"
+	// RoleUser can use the LLM proxy and view the dashboard.
+	RoleUser Role = "user"
+	// RoleViewer can only view the dashboard and audit logs.
 	RoleViewer Role = "viewer"
 )
 
+// User represents a gateway user account stored in the database.
 type User struct {
 	ID           uint      `gorm:"primarykey" json:"id"`
 	Username     string    `gorm:"uniqueIndex;not null;size:64" json:"username"`

@@ -8,31 +8,36 @@ import (
 	"gorm.io/gorm"
 )
 
-// --- UserStore ---
+// ==================== UserStore Implementation ====================
 
-func (s *SQLiteStore) CreateUser(user *model.User) error {
-	return s.db.Create(user).Error
+// CreateUser inserts a new user record into the database.
+func (sqliteStore *SQLiteStore) CreateUser(user *model.User) error {
+	return sqliteStore.db.Create(user).Error
 }
 
-func (s *SQLiteStore) GetUserByID(id uint) (*model.User, error) {
+// GetUserByID retrieves a user by their primary key ID.
+func (sqliteStore *SQLiteStore) GetUserByID(id uint) (*model.User, error) {
 	var user model.User
-	err := s.db.First(&user, id).Error
+	err := sqliteStore.db.First(&user, id).Error
 	return &user, err
 }
 
-func (s *SQLiteStore) GetUserByUsername(username string) (*model.User, error) {
+// GetUserByUsername retrieves a user by their unique username.
+func (sqliteStore *SQLiteStore) GetUserByUsername(username string) (*model.User, error) {
 	var user model.User
-	err := s.db.Where("username = ?", username).First(&user).Error
+	err := sqliteStore.db.Where("username = ?", username).First(&user).Error
 	return &user, err
 }
 
-func (s *SQLiteStore) GetUserByAPIKeyHash(hash string) (*model.User, error) {
+// GetUserByAPIKeyHash retrieves a user by the SHA-256 hash of their API key.
+func (sqliteStore *SQLiteStore) GetUserByAPIKeyHash(hash string) (*model.User, error) {
 	var user model.User
-	err := s.db.Where("api_key_hash = ?", hash).First(&user).Error
+	err := sqliteStore.db.Where("api_key_hash = ?", hash).First(&user).Error
 	return &user, err
 }
 
-func (s *SQLiteStore) ListUsers(page, pageSize int) ([]model.User, int64, error) {
+// ListUsers returns a paginated list of users, ordered by ID descending.
+func (sqliteStore *SQLiteStore) ListUsers(page, pageSize int) ([]model.User, int64, error) {
 	var users []model.User
 	var total int64
 
@@ -43,101 +48,117 @@ func (s *SQLiteStore) ListUsers(page, pageSize int) ([]model.User, int64, error)
 		pageSize = 20
 	}
 
-	s.db.Model(&model.User{}).Count(&total)
-	err := s.db.Offset((page - 1) * pageSize).Limit(pageSize).
+	sqliteStore.db.Model(&model.User{}).Count(&total)
+	err := sqliteStore.db.Offset((page - 1) * pageSize).Limit(pageSize).
 		Order("id DESC").Find(&users).Error
 	return users, total, err
 }
 
-func (s *SQLiteStore) UpdateUser(user *model.User) error {
-	return s.db.Save(user).Error
+// UpdateUser saves the modified user record to the database.
+func (sqliteStore *SQLiteStore) UpdateUser(user *model.User) error {
+	return sqliteStore.db.Save(user).Error
 }
 
-func (s *SQLiteStore) DeleteUser(id uint) error {
-	return s.db.Delete(&model.User{}, id).Error
+// DeleteUser removes a user record by their primary key ID.
+func (sqliteStore *SQLiteStore) DeleteUser(id uint) error {
+	return sqliteStore.db.Delete(&model.User{}, id).Error
 }
 
-// --- ProviderStore ---
+// ==================== ProviderStore Implementation ====================
 
-func (s *SQLiteStore) CreateProvider(p *model.ProviderConfig) error {
-	return s.db.Create(p).Error
+// CreateProvider inserts a new provider configuration record.
+func (sqliteStore *SQLiteStore) CreateProvider(provider *model.ProviderConfig) error {
+	return sqliteStore.db.Create(provider).Error
 }
 
-func (s *SQLiteStore) GetProviderByID(id uint) (*model.ProviderConfig, error) {
-	var p model.ProviderConfig
-	err := s.db.Preload("Models").First(&p, id).Error
-	return &p, err
+// GetProviderByID retrieves a provider config by ID, including its associated models.
+func (sqliteStore *SQLiteStore) GetProviderByID(id uint) (*model.ProviderConfig, error) {
+	var provider model.ProviderConfig
+	err := sqliteStore.db.Preload("Models").First(&provider, id).Error
+	return &provider, err
 }
 
-func (s *SQLiteStore) GetProviderByName(name string) (*model.ProviderConfig, error) {
-	var p model.ProviderConfig
-	err := s.db.Preload("Models").Where("name = ?", name).First(&p).Error
-	return &p, err
+// GetProviderByName retrieves a provider config by unique name, including its models.
+func (sqliteStore *SQLiteStore) GetProviderByName(name string) (*model.ProviderConfig, error) {
+	var provider model.ProviderConfig
+	err := sqliteStore.db.Preload("Models").Where("name = ?", name).First(&provider).Error
+	return &provider, err
 }
 
-func (s *SQLiteStore) ListProviders() ([]model.ProviderConfig, error) {
+// ListProviders returns all provider configs ordered by priority descending.
+func (sqliteStore *SQLiteStore) ListProviders() ([]model.ProviderConfig, error) {
 	var providers []model.ProviderConfig
-	err := s.db.Preload("Models").Order("priority DESC").Find(&providers).Error
+	err := sqliteStore.db.Preload("Models").Order("priority DESC").Find(&providers).Error
 	return providers, err
 }
 
-func (s *SQLiteStore) ListEnabledProviders() ([]model.ProviderConfig, error) {
+// ListEnabledProviders returns only enabled providers with their enabled models.
+func (sqliteStore *SQLiteStore) ListEnabledProviders() ([]model.ProviderConfig, error) {
 	var providers []model.ProviderConfig
-	err := s.db.Preload("Models", "enabled = ?", true).
+	err := sqliteStore.db.Preload("Models", "enabled = ?", true).
 		Where("enabled = ?", true).
 		Order("priority DESC").Find(&providers).Error
 	return providers, err
 }
 
-func (s *SQLiteStore) UpdateProvider(p *model.ProviderConfig) error {
-	return s.db.Save(p).Error
+// UpdateProvider saves the modified provider config to the database.
+func (sqliteStore *SQLiteStore) UpdateProvider(provider *model.ProviderConfig) error {
+	return sqliteStore.db.Save(provider).Error
 }
 
-func (s *SQLiteStore) DeleteProvider(id uint) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("provider_id = ?", id).Delete(&model.ModelConfig{}).Error; err != nil {
+// DeleteProvider removes a provider and all its associated model configs in a transaction.
+func (sqliteStore *SQLiteStore) DeleteProvider(id uint) error {
+	return sqliteStore.db.Transaction(func(transaction *gorm.DB) error {
+		if err := transaction.Where("provider_id = ?", id).Delete(&model.ModelConfig{}).Error; err != nil {
 			return err
 		}
-		return tx.Delete(&model.ProviderConfig{}, id).Error
+		return transaction.Delete(&model.ProviderConfig{}, id).Error
 	})
 }
 
-func (s *SQLiteStore) CreateModel(m *model.ModelConfig) error {
-	return s.db.Create(m).Error
+// CreateModel inserts a new model configuration record.
+func (sqliteStore *SQLiteStore) CreateModel(modelConfig *model.ModelConfig) error {
+	return sqliteStore.db.Create(modelConfig).Error
 }
 
-func (s *SQLiteStore) ListModelsByProvider(providerID uint) ([]model.ModelConfig, error) {
+// ListModelsByProvider returns all model configs belonging to a given provider.
+func (sqliteStore *SQLiteStore) ListModelsByProvider(providerID uint) ([]model.ModelConfig, error) {
 	var models []model.ModelConfig
-	err := s.db.Where("provider_id = ?", providerID).Find(&models).Error
+	err := sqliteStore.db.Where("provider_id = ?", providerID).Find(&models).Error
 	return models, err
 }
 
-func (s *SQLiteStore) UpdateModel(m *model.ModelConfig) error {
-	return s.db.Save(m).Error
+// UpdateModel saves the modified model config to the database.
+func (sqliteStore *SQLiteStore) UpdateModel(modelConfig *model.ModelConfig) error {
+	return sqliteStore.db.Save(modelConfig).Error
 }
 
-func (s *SQLiteStore) DeleteModel(id uint) error {
-	return s.db.Delete(&model.ModelConfig{}, id).Error
+// DeleteModel removes a model config by its primary key ID.
+func (sqliteStore *SQLiteStore) DeleteModel(id uint) error {
+	return sqliteStore.db.Delete(&model.ModelConfig{}, id).Error
 }
 
-// --- AuditStore ---
+// ==================== AuditStore Implementation ====================
 
-func (s *SQLiteStore) CreateAuditLog(log *model.AuditLog) error {
-	return s.db.Create(log).Error
+// CreateAuditLog inserts a single audit log entry.
+func (sqliteStore *SQLiteStore) CreateAuditLog(auditLog *model.AuditLog) error {
+	return sqliteStore.db.Create(auditLog).Error
 }
 
-func (s *SQLiteStore) BatchCreateAuditLogs(logs []model.AuditLog) error {
-	if len(logs) == 0 {
+// BatchCreateAuditLogs inserts multiple audit log entries in batches of 100.
+func (sqliteStore *SQLiteStore) BatchCreateAuditLogs(auditLogs []model.AuditLog) error {
+	if len(auditLogs) == 0 {
 		return nil
 	}
-	return s.db.CreateInBatches(logs, 100).Error
+	return sqliteStore.db.CreateInBatches(auditLogs, 100).Error
 }
 
-func (s *SQLiteStore) SearchAuditLogs(filter model.AuditFilter) ([]model.AuditLog, int64, error) {
-	var logs []model.AuditLog
+// SearchAuditLogs retrieves audit logs matching the provided filter criteria with pagination.
+func (sqliteStore *SQLiteStore) SearchAuditLogs(filter model.AuditFilter) ([]model.AuditLog, int64, error) {
+	var auditLogs []model.AuditLog
 	var total int64
 
-	query := s.db.Model(&model.AuditLog{})
+	query := sqliteStore.db.Model(&model.AuditLog{})
 
 	if filter.UserID > 0 {
 		query = query.Where("user_id = ?", filter.UserID)
@@ -155,13 +176,13 @@ func (s *SQLiteStore) SearchAuditLogs(filter model.AuditFilter) ([]model.AuditLo
 		query = query.Where("status_code = ?", filter.Status)
 	}
 	if filter.StartTime != "" {
-		if t, err := time.Parse(time.RFC3339, filter.StartTime); err == nil {
-			query = query.Where("created_at >= ?", t)
+		if parsedTime, err := time.Parse(time.RFC3339, filter.StartTime); err == nil {
+			query = query.Where("created_at >= ?", parsedTime)
 		}
 	}
 	if filter.EndTime != "" {
-		if t, err := time.Parse(time.RFC3339, filter.EndTime); err == nil {
-			query = query.Where("created_at <= ?", t)
+		if parsedTime, err := time.Parse(time.RFC3339, filter.EndTime); err == nil {
+			query = query.Where("created_at <= ?", parsedTime)
 		}
 	}
 
@@ -177,38 +198,44 @@ func (s *SQLiteStore) SearchAuditLogs(filter model.AuditFilter) ([]model.AuditLo
 	}
 
 	err := query.Offset((page - 1) * pageSize).Limit(pageSize).
-		Order("id DESC").Find(&logs).Error
-	return logs, total, err
+		Order("id DESC").Find(&auditLogs).Error
+	return auditLogs, total, err
 }
 
-// --- PolicyStore ---
+// ==================== PolicyStore Implementation ====================
 
-func (s *SQLiteStore) CreatePolicy(p *model.SecurityPolicy) error {
-	return s.db.Create(p).Error
+// CreatePolicy inserts a new security policy record.
+func (sqliteStore *SQLiteStore) CreatePolicy(policy *model.SecurityPolicy) error {
+	return sqliteStore.db.Create(policy).Error
 }
 
-func (s *SQLiteStore) GetPolicyByID(id uint) (*model.SecurityPolicy, error) {
-	var p model.SecurityPolicy
-	err := s.db.First(&p, id).Error
-	return &p, err
+// GetPolicyByID retrieves a security policy by its primary key ID.
+func (sqliteStore *SQLiteStore) GetPolicyByID(id uint) (*model.SecurityPolicy, error) {
+	var policy model.SecurityPolicy
+	err := sqliteStore.db.First(&policy, id).Error
+	return &policy, err
 }
 
-func (s *SQLiteStore) ListPolicies() ([]model.SecurityPolicy, error) {
+// ListPolicies returns all security policies ordered by ID ascending.
+func (sqliteStore *SQLiteStore) ListPolicies() ([]model.SecurityPolicy, error) {
 	var policies []model.SecurityPolicy
-	err := s.db.Order("id ASC").Find(&policies).Error
+	err := sqliteStore.db.Order("id ASC").Find(&policies).Error
 	return policies, err
 }
 
-func (s *SQLiteStore) ListEnabledPolicies(policyType model.PolicyType) ([]model.SecurityPolicy, error) {
+// ListEnabledPolicies returns all enabled policies of a given type.
+func (sqliteStore *SQLiteStore) ListEnabledPolicies(policyType model.PolicyType) ([]model.SecurityPolicy, error) {
 	var policies []model.SecurityPolicy
-	err := s.db.Where("type = ? AND enabled = ?", policyType, true).Find(&policies).Error
+	err := sqliteStore.db.Where("type = ? AND enabled = ?", policyType, true).Find(&policies).Error
 	return policies, err
 }
 
-func (s *SQLiteStore) UpdatePolicy(p *model.SecurityPolicy) error {
-	return s.db.Save(p).Error
+// UpdatePolicy saves the modified security policy to the database.
+func (sqliteStore *SQLiteStore) UpdatePolicy(policy *model.SecurityPolicy) error {
+	return sqliteStore.db.Save(policy).Error
 }
 
-func (s *SQLiteStore) DeletePolicy(id uint) error {
-	return s.db.Delete(&model.SecurityPolicy{}, id).Error
+// DeletePolicy removes a security policy by its primary key ID.
+func (sqliteStore *SQLiteStore) DeletePolicy(id uint) error {
+	return sqliteStore.db.Delete(&model.SecurityPolicy{}, id).Error
 }

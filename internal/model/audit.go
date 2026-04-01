@@ -2,6 +2,7 @@ package model
 
 import "time"
 
+// AuditLog records a single proxied LLM request for auditing purposes.
 type AuditLog struct {
 	ID           uint      `gorm:"primarykey" json:"id"`
 	RequestID    string    `gorm:"size:64;index" json:"request_id"`
@@ -19,6 +20,7 @@ type AuditLog struct {
 	CreatedAt    time.Time `gorm:"index" json:"created_at"`
 }
 
+// AuditFilter defines the query parameters for searching audit logs.
 type AuditFilter struct {
 	UserID    uint   `form:"user_id"`
 	Username  string `form:"username"`

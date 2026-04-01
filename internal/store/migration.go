@@ -6,8 +6,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func (s *SQLiteStore) AutoMigrate() error {
-	return s.db.AutoMigrate(
+// AutoMigrate runs GORM auto-migration for all registered entity models,
+// creating or updating database tables as needed.
+func (sqliteStore *SQLiteStore) AutoMigrate() error {
+	return sqliteStore.db.AutoMigrate(
 		&model.User{},
 		&model.ProviderConfig{},
 		&model.ModelConfig{},
@@ -16,23 +18,25 @@ func (s *SQLiteStore) AutoMigrate() error {
 	)
 }
 
-func (s *SQLiteStore) Seed(adminUsername, adminPassword string) error {
+// Seed creates the initial admin user if no users exist in the database.
+// This should be called once during application startup.
+func (sqliteStore *SQLiteStore) Seed(adminUsername, adminPassword string) error {
 	var count int64
-	s.db.Model(&model.User{}).Count(&count)
+	sqliteStore.db.Model(&model.User{}).Count(&count)
 	if count > 0 {
 		return nil
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(adminPassword), bcrypt.DefaultCost)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(adminPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 
 	admin := model.User{
 		Username:     adminUsername,
-		PasswordHash: string(hash),
+		PasswordHash: string(passwordHash),
 		Role:         model.RoleAdmin,
 		RateLimit:    0, // unlimited for admin
 	}
-	return s.db.Create(&admin).Error
+	return sqliteStore.db.Create(&admin).Error
 }
