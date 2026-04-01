@@ -8,31 +8,34 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// HealthHandler handles health check requests
+// HealthHandler handles liveness and readiness health check requests.
 type HealthHandler struct {
-	store store.Store
+	dataStore store.Store
 }
 
-// NewHealthHandler creates a new HealthHandler
-func NewHealthHandler(s store.Store) *HealthHandler {
-	return &HealthHandler{store: s}
+// NewHealthHandler creates a new HealthHandler with the given data store.
+func NewHealthHandler(dataStore store.Store) *HealthHandler {
+	return &HealthHandler{dataStore: dataStore}
 }
 
-func (h *HealthHandler) Liveness(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+// Liveness returns HTTP 200 if the server process is alive.
+func (handler *HealthHandler) Liveness(ctx *gin.Context) {
+	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-func (h *HealthHandler) Readiness(c *gin.Context) {
-	if s, ok := h.store.(*store.SQLiteStore); ok {
-		db, err := s.DB().DB()
+// Readiness returns HTTP 200 if the server is ready to accept traffic,
+// including verifying database connectivity.
+func (handler *HealthHandler) Readiness(ctx *gin.Context) {
+	if sqliteStore, ok := handler.dataStore.(*store.SQLiteStore); ok {
+		sqlDB, err := sqliteStore.GormDB().DB()
 		if err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "detail": "db connection failed"})
+			ctx.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "detail": "db connection failed"})
 			return
 		}
-		if err := db.Ping(); err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "detail": "db ping failed"})
+		if err := sqlDB.Ping(); err != nil {
+			ctx.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "detail": "db ping failed"})
 			return
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ready"})
+	ctx.JSON(http.StatusOK, gin.H{"status": "ready"})
 }

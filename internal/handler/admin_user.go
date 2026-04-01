@@ -14,72 +14,81 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// AdminAuthHandler handles admin login and JWT token generation.
 type AdminAuthHandler struct {
-	store  store.Store
-	cfg    *config.Config
-	logger *zap.Logger
+	dataStore store.Store
+	appConfig *config.Config
+	logger    *zap.Logger
 }
 
+// LoginRequest represents the JSON body for admin login.
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
 }
 
+// LoginResponse represents the JSON response after successful login.
 type LoginResponse struct {
 	Token    string `json:"token"`
 	Username string `json:"username"`
 	Role     string `json:"role"`
 }
 
-func NewAdminAuthHandler(s store.Store, cfg *config.Config, l *zap.Logger) *AdminAuthHandler {
-	return &AdminAuthHandler{store: s, cfg: cfg, logger: l}
+// NewAdminAuthHandler creates a new AdminAuthHandler with the given dependencies.
+func NewAdminAuthHandler(dataStore store.Store, appConfig *config.Config, logger *zap.Logger) *AdminAuthHandler {
+	return &AdminAuthHandler{dataStore: dataStore, appConfig: appConfig, logger: logger}
 }
 
-// Login handles user login and returns a JWT token.
-func (h *AdminAuthHandler) Login(ctx *gin.Context) {
-	var req LoginRequest
-	// JSON -> GO struct
-	err := ctx.ShouldBindJSON(&req)
-	if err != nil {
+// Login validates user credentials and returns a JWT token on success.
+func (handler *AdminAuthHandler) Login(ctx *gin.Context) {
+	var loginReq LoginRequest
+	if err := ctx.ShouldBindJSON(&loginReq); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
-	// Get user by username
-	userctx, err := h.store.GetUserByUsername(req.Username)
+	// Look up user by username
+	user, err := handler.dataStore.GetUserByUsername(loginReq.Username)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
 
-	// Validate user password
-	if err := bcrypt.CompareHashAndPassword([]byte(userctx.PasswordHash), []byte(req.Password)); err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid password"})
+	// Verify password against stored bcrypt hash
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(loginReq.Password)); err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
 
-	// Generate JWT token
-	token, err := auth.GenerateToken(h.cfg.Auth.JWTSecret, userctx.ID, userctx.Username, string(userctx.Role), h.cfg.Auth.TokenExpiry)
+	// Generate JWT token with user claims
+	token, err := auth.GenerateToken(
+		handler.appConfig.Auth.JWTSecret,
+		user.ID,
+		user.Username,
+		string(user.Role),
+		handler.appConfig.Auth.TokenExpiry,
+	)
 	if err != nil {
-		h.logger.Error("failed to generate user token", zap.Error(err))
+		handler.logger.Error("failed to generate user token", zap.Error(err))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 
 	ctx.JSON(http.StatusOK, LoginResponse{
 		Token:    token,
-		Username: userctx.Username,
-		Role:     string(userctx.Role),
+		Username: user.Username,
+		Role:     string(user.Role),
 	})
 }
 
-// UserHandler handles user CRUD operations.
+// UserHandler handles user CRUD operations for the admin API.
 type UserHandler struct {
-	store  store.Store
-	cfg    *config.Config
-	logger *zap.Logger
+	dataStore store.Store
+	appConfig *config.Config
+	logger    *zap.Logger
 }
 
+// CreateUserRequest represents the JSON body for creating a new user.
 type CreateUserRequest struct {
 	Username  string     `json:"username" binding:"required"`
 	Password  string     `json:"password" binding:"required,min=6"`
@@ -88,19 +97,19 @@ type CreateUserRequest struct {
 	RateLimit int        `json:"rate_limit"`
 }
 
-func NewUserHandler(s store.Store, cfg *config.Config, l *zap.Logger) *UserHandler {
-	return &UserHandler{store: s, cfg: cfg, logger: l}
+// NewUserHandler creates a new UserHandler with the given dependencies.
+func NewUserHandler(dataStore store.Store, appConfig *config.Config, logger *zap.Logger) *UserHandler {
+	return &UserHandler{dataStore: dataStore, appConfig: appConfig, logger: logger}
 }
 
-// List lists all users.
-func (h *UserHandler) List(ctx *gin.Context) {
-	// Extract page and page size from request query parameters, if not provided use default values
+// List returns a paginated list of all users.
+func (handler *UserHandler) List(ctx *gin.Context) {
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "20"))
 
-	users, total, err := h.store.ListUsers(page, pageSize)
+	users, total, err := handler.dataStore.ListUsers(page, pageSize)
 	if err != nil {
-		h.logger.Error("failed to list users", zap.Error(err))
+		handler.logger.Error("failed to list users", zap.Error(err))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
@@ -112,105 +121,108 @@ func (h *UserHandler) List(ctx *gin.Context) {
 	})
 }
 
-// Create creates a new user.
-func (h *UserHandler) Create(ctx *gin.Context) {
-	var req CreateUserRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
+// Create registers a new user with hashed password.
+func (handler *UserHandler) Create(ctx *gin.Context) {
+	var createReq CreateUserRequest
+	if err := ctx.ShouldBindJSON(&createReq); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(createReq.Password), bcrypt.DefaultCost)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 
-	rateLimit := req.RateLimit
+	rateLimit := createReq.RateLimit
 	if rateLimit == 0 {
-		rateLimit = h.cfg.Security.RateLimit.DefaultRPM
+		rateLimit = handler.appConfig.Security.RateLimit.DefaultRPM
 	}
 
-	userInfo := model.User{
-		Username:     req.Username,
+	newUser := model.User{
+		Username:     createReq.Username,
 		PasswordHash: string(passwordHash),
-		Role:         req.Role,
-		Email:        req.Email,
+		Role:         createReq.Role,
+		Email:        createReq.Email,
 		RateLimit:    rateLimit,
 	}
 
-	err = h.store.CreateUser(&userInfo)
-	if err != nil {
-		h.logger.Error("failed to create user", zap.Error(err))
+	if err := handler.dataStore.CreateUser(&newUser); err != nil {
+		handler.logger.Error("failed to create user", zap.Error(err))
 		ctx.JSON(http.StatusConflict, gin.H{"error": "username already exists"})
 		return
 	}
 
-	ctx.JSON(http.StatusCreated, userInfo)
+	ctx.JSON(http.StatusCreated, newUser)
 }
 
-// Update updates an existing user.
-func (h *UserHandler) Update(ctx *gin.Context) {
-	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
+// UpdateUserRequest represents the JSON body for updating an existing user.
+// All fields are optional pointers so that only provided fields are updated.
+type UpdateUserRequest struct {
+	Email     *string     `json:"email"`
+	Role      *model.Role `json:"role"`
+	RateLimit *int        `json:"rate_limit"`
+	Password  *string     `json:"password"`
+}
+
+// Update modifies an existing user's fields. Only non-nil fields are applied.
+func (handler *UserHandler) Update(ctx *gin.Context) {
+	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
 
-	user, err := h.store.GetUserByID(uint(id))
+	existingUser, err := handler.dataStore.GetUserByID(uint(userID))
 	if err != nil {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
 
-	var req struct {
-		Email     *string     `json:"email"`
-		Role      *model.Role `json:"role"`
-		RateLimit *int        `json:"rate_limit"`
-		Password  *string     `json:"password"`
-	}
-	if err := ctx.ShouldBindJSON(&req); err != nil {
+	var updateReq UpdateUserRequest
+	if err := ctx.ShouldBindJSON(&updateReq); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if req.Email != nil {
-		user.Email = *req.Email
+	if updateReq.Email != nil {
+		existingUser.Email = *updateReq.Email
 	}
-	if req.Role != nil {
-		user.Role = *req.Role
+	if updateReq.Role != nil {
+		existingUser.Role = *updateReq.Role
 	}
-	if req.RateLimit != nil {
-		user.RateLimit = *req.RateLimit
+	if updateReq.RateLimit != nil {
+		existingUser.RateLimit = *updateReq.RateLimit
 	}
-	if req.Password != nil && *req.Password != "" {
-		hash, err := bcrypt.GenerateFromPassword([]byte(*req.Password), bcrypt.DefaultCost)
+	if updateReq.Password != nil && *updateReq.Password != "" {
+		passwordHash, err := bcrypt.GenerateFromPassword([]byte(*updateReq.Password), bcrypt.DefaultCost)
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
-		user.PasswordHash = string(hash)
+		existingUser.PasswordHash = string(passwordHash)
 	}
 
-	if err := h.store.UpdateUser(user); err != nil {
-		h.logger.Error("failed to update user", zap.Error(err))
+	if err := handler.dataStore.UpdateUser(existingUser); err != nil {
+		handler.logger.Error("failed to update user", zap.Error(err))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, user)
+	ctx.JSON(http.StatusOK, existingUser)
 }
 
-// Delete deletes an existing user.
-func (h *UserHandler) Delete(ctx *gin.Context) {
-	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
+// Delete removes a user by their ID.
+func (handler *UserHandler) Delete(ctx *gin.Context) {
+	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
 
-	if err := h.store.DeleteUser(uint(id)); err != nil {
-		h.logger.Error("failed to delete user", zap.Error(err))
+	if err := handler.dataStore.DeleteUser(uint(userID)); err != nil {
+		handler.logger.Error("failed to delete user", zap.Error(err))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
@@ -218,36 +230,38 @@ func (h *UserHandler) Delete(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 
-func (h *UserHandler) GenerateAPIKey(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+// GenerateAPIKey creates a new API key for a user. The full key is returned
+// only once in the response; subsequent retrievals are not possible.
+func (handler *UserHandler) GenerateAPIKey(ctx *gin.Context) {
+	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
 
-	user, err := h.store.GetUserByID(uint(id))
+	existingUser, err := handler.dataStore.GetUserByID(uint(userID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
 
-	fullKey, hash, prefix, err := auth.GenerateAPIKey()
+	fullKey, keyHash, keyPrefix, err := auth.GenerateAPIKey()
 	if err != nil {
-		h.logger.Error("failed to generate API key", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		handler.logger.Error("failed to generate API key", zap.Error(err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 
-	user.APIKeyHash = hash
-	user.APIKeyPrefix = prefix
-	if err := h.store.UpdateUser(user); err != nil {
-		h.logger.Error("failed to save API key", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+	existingUser.APIKeyHash = keyHash
+	existingUser.APIKeyPrefix = keyPrefix
+	if err := handler.dataStore.UpdateUser(existingUser); err != nil {
+		handler.logger.Error("failed to save API key", zap.Error(err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 
-	// Return the full key only once; it won't be retrievable again
-	c.JSON(http.StatusOK, gin.H{
+	// Return the full key only once; it cannot be retrieved again
+	ctx.JSON(http.StatusOK, gin.H{
 		"api_key": fullKey,
 		"message": "Save this key securely. It will not be shown again.",
 	})

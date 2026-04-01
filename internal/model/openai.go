@@ -19,14 +19,17 @@ type ChatCompletionRequest struct {
 	StreamOptions    *StreamOptions  `json:"stream_options,omitempty"`
 }
 
+// StreamOptions configures streaming behavior.
 type StreamOptions struct {
 	IncludeUsage bool `json:"include_usage,omitempty"`
 }
 
+// ResponseFormat specifies the desired output format (e.g. "json_object").
 type ResponseFormat struct {
 	Type string `json:"type"`
 }
 
+// ChatMessage represents a single message in a chat conversation.
 type ChatMessage struct {
 	Role       string     `json:"role"`
 	Content    any        `json:"content"`
@@ -37,17 +40,17 @@ type ChatMessage struct {
 
 // ContentString extracts text content from the message Content field,
 // which may be a plain string or an array of content parts.
-func (m *ChatMessage) ContentString() string {
-	switch v := m.Content.(type) {
+func (message *ChatMessage) ContentString() string {
+	switch value := message.Content.(type) {
 	case string:
-		return v
+		return value
 	case []any:
 		var text string
-		for _, part := range v {
-			if p, ok := part.(map[string]any); ok {
-				if p["type"] == "text" {
-					if t, ok := p["text"].(string); ok {
-						text += t
+		for _, contentPart := range value {
+			if partMap, ok := contentPart.(map[string]any); ok {
+				if partMap["type"] == "text" {
+					if textValue, ok := partMap["text"].(string); ok {
+						text += textValue
 					}
 				}
 			}
@@ -58,23 +61,27 @@ func (m *ChatMessage) ContentString() string {
 	}
 }
 
+// Tool describes a function tool available for the model to call.
 type Tool struct {
 	Type     string       `json:"type"`
 	Function ToolFunction `json:"function"`
 }
 
+// ToolFunction defines the name, description, and parameters schema of a callable function.
 type ToolFunction struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	Parameters  any    `json:"parameters,omitempty"`
 }
 
+// ToolCall represents a function call made by the model in its response.
 type ToolCall struct {
 	ID       string           `json:"id"`
 	Type     string           `json:"type"`
 	Function ToolCallFunction `json:"function"`
 }
 
+// ToolCallFunction contains the function name and serialized arguments of a tool call.
 type ToolCallFunction struct {
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
@@ -91,6 +98,7 @@ type ChatCompletionResponse struct {
 	SystemFingerprint string   `json:"system_fingerprint,omitempty"`
 }
 
+// Choice represents one completion choice in the response.
 type Choice struct {
 	Index        int          `json:"index"`
 	Message      *ChatMessage `json:"message,omitempty"`
@@ -98,6 +106,7 @@ type Choice struct {
 	FinishReason *string      `json:"finish_reason"`
 }
 
+// Usage reports token consumption for a completion request.
 type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
@@ -134,6 +143,7 @@ type ErrorResponse struct {
 	Error ErrorDetail `json:"error"`
 }
 
+// ErrorDetail contains the structured error information.
 type ErrorDetail struct {
 	Message string `json:"message"`
 	Type    string `json:"type"`

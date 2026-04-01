@@ -2,6 +2,7 @@ package model
 
 import "time"
 
+// ProviderType identifies the upstream LLM vendor.
 type ProviderType string
 
 const (
@@ -13,6 +14,7 @@ const (
 	ProviderOllama    ProviderType = "ollama"
 )
 
+// ProviderConfig stores the configuration for an upstream LLM provider.
 type ProviderConfig struct {
 	ID             uint          `gorm:"primarykey" json:"id"`
 	Name           string        `gorm:"uniqueIndex;not null;size:64" json:"name"`
@@ -28,6 +30,7 @@ type ProviderConfig struct {
 	UpdatedAt      time.Time     `json:"updated_at"`
 }
 
+// ModelConfig stores the configuration for a specific model under a provider.
 type ModelConfig struct {
 	ID           uint      `gorm:"primarykey" json:"id"`
 	ProviderID   uint      `gorm:"index;not null" json:"provider_id"`

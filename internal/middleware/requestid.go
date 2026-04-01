@@ -5,16 +5,19 @@ import (
 	"github.com/google/uuid"
 )
 
+// RequestIDHeader is the HTTP header name used to carry the request trace ID.
 const RequestIDHeader = "X-Request-ID"
 
+// RequestID is a middleware that ensures every request has a unique X-Request-ID.
+// If the client provides one, it is reused; otherwise a new UUID is generated.
 func RequestID() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		rid := c.GetHeader(RequestIDHeader)
-		if rid == "" {
-			rid = uuid.New().String()
+	return func(ctx *gin.Context) {
+		requestID := ctx.GetHeader(RequestIDHeader)
+		if requestID == "" {
+			requestID = uuid.New().String()
 		}
-		c.Set("request_id", rid)
-		c.Header(RequestIDHeader, rid)
-		c.Next()
+		ctx.Set("request_id", requestID)
+		ctx.Header(RequestIDHeader, requestID)
+		ctx.Next()
 	}
 }
