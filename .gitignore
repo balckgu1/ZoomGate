@@ -1,0 +1,35 @@
+# Binary
+zoomgate
+zoomgate.exe
+
+# Database
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Config with secrets
+config.yaml
+config.yml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.qoder/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+
+# Frontend
+web/node_modules/
+web/dist/
+
+# Environment
+.env
+.env.*

@@ -1,0 +1,38 @@
+server:
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 120s
+  dev_mode: false
+
+database:
+  path: "./zoomgate.db"
+
+auth:
+  jwt_secret: "change-me-in-production"
+  token_expiry: 24h
+  admin_username: admin
+  admin_password: admin123
+  encryption_key: "change-me-32-byte-encryption-key"
+
+routing:
+  default_strategy: priority
+  max_retries: 2
+  health_check_interval: 30s
+
+security:
+  prompt_detection:
+    enabled: true
+    mode: warn
+    threshold: 0.7
+    layers: [regex, heuristic, structural]
+    external_url: ""
+  rate_limit:
+    default_rpm: 60
+    default_tpm: 100000
+  data_masking:
+    enabled: true
+    patterns: [email, phone, credit_card]
+
+logging:
+  level: info
+  format: console
